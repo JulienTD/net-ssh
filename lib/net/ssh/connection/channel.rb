@@ -158,6 +158,7 @@ module Net
         #     end
         #   end
         def exec(command, &block)
+          # @here second step
           send_channel_request("exec", :string, command, &block)
         end
 
@@ -492,8 +493,27 @@ module Net
           msg = Buffer.from(:byte, CHANNEL_REQUEST,
                             :long, remote_id, :string, request_name,
                             :bool, !callback.nil?, *data)
-          connection.send_message(msg)
-          pending_requests << callback if callback
+          # @HERE third step
+          # puts "Buffer length:"
+          # puts msg.length
+          # puts (256 * 1024)
+          #if connection.send_message(msg) == nil
+          value = connection.send_message(msg)
+          if value == nil
+            puts "Send message is nil"
+            #return nil, false
+            # callback.call self, false
+            # return pending_requests
+            callback.call(self, false)
+            # return pending_requests
+            # do_failure
+            # callback.
+          else
+            # pend
+          # else
+            # append callback in the pending request
+            pending_requests << callback if callback
+          end
         end
 
         public # these methods are public, but for Net::SSH internal use only

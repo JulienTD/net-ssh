@@ -31,6 +31,9 @@ module Net
         # Default IO.select timeout threshold
         DEFAULT_IO_SELECT_TIMEOUT = 300
 
+        # Maximum command length before 
+        #MAXIMUM_COMMAND_LENGTH = 262121
+
         # The underlying transport layer abstraction (see Net::SSH::Transport::Session).
         attr_reader :transport
 
@@ -336,6 +339,8 @@ module Net
         #
         #   channel.wait
         def open_channel(type = "session", *extra, &on_confirm)
+          # @here open_channel
+          puts "open channel"
           local_id = get_next_channel_id
 
           channel = Channel.new(self, type, local_id, @max_pkt_size, @max_win_size, &on_confirm)
@@ -344,6 +349,7 @@ module Net
                             :long, channel.local_maximum_packet_size, *extra)
           send_message(msg)
 
+          puts "running the exec block after the channel was opened"
           channels[local_id] = channel
         end
 
@@ -377,33 +383,74 @@ module Net
         #     end
         #   end
         def exec(command, status: nil, &block)
+          # if command.length >= MAXIMUM_COMMAND_LENGTH
+          #   raise "command too long"
+          # end
+
+          debug { "----------------------------------------------------------------------------" }
+          # @here first step
           open_channel do |channel|
             channel.exec(command) do |ch, success|
-              raise "could not execute command: #{command.inspect}" unless success
+              puts "inside the function"
+              if success == false
+                #block.call(nil)
+                # puts "The command has failed !"
+                # status[:exit_code] = 0
+                # if block
+                #   block.call(ch, :stdout, "")
+                # else
+                #   $stdout.print("")
+                # end
+                #status[:exit_code] = 1
+                #block.call(ch, :stdout, "")
+                # if block
+                #   block.call(ch, :stdout, "super data\0")
+                # else
+                #   $stdout.print("super data\0")
+                #   return
+                # block.call(ch, :stdout, "")
+                # $stdout.print("salut")
 
-              if status
-                channel.on_request("exit-status") do |ch2, data|
-                  status[:exit_code] = data.read_long
+                # break
+                # next
+                # break
+              else
+                # puts "The command is OK"
+
+                raise "could not execute command: " unless success # #{command.inspect}
+
+                if status
+                  channel.on_request("exit-status") do |ch2, data|
+                    puts "Exit status (#{:exit_code}): #{data.read_long}"
+                    status[:exit_code] = data.read_long
+                  end
+
+                  channel.on_request("exit-signal") do |ch2, data|
+                    puts "Exit signal (#{:exit_signal}): #{data.read_long}"
+                    status[:exit_signal] = data.read_long
+                  end
                 end
 
-                channel.on_request("exit-signal") do |ch2, data|
-                  status[:exit_signal] = data.read_long
+                channel.on_data do |ch2, data|
+                  puts "On data: #{data}"
+                  if block
+                    puts "Block is not null"
+                    block.call(ch2, :stdout, data)
+                  else
+                    puts "Block is null"
+                    $stdout.print(data)
+                  end
                 end
-              end
 
-              channel.on_data do |ch2, data|
-                if block
-                  block.call(ch2, :stdout, data)
-                else
-                  $stdout.print(data)
-                end
-              end
-
-              channel.on_extended_data do |ch2, type, data|
-                if block
-                  block.call(ch2, :stderr, data)
-                else
-                  $stderr.print(data)
+                channel.on_extended_data do |ch2, type, data|
+                  puts "On extended data: #{data}"
+                  if block
+                    puts "Block is not null"
+                    block.call(ch2, :stderr, data)
+                  else
+                    puts "Block is null"
+                    $stderr.print(data)
+                  end
                 end
               end
             end
@@ -418,6 +465,7 @@ module Net
         #
         # the returned string has an exitstatus method to query it's exit satus
         def exec!(command, status: nil, &block)
+          debug { "other exec !!!!!" }
           block_or_concat = block || Proc.new do |ch, type, data|
             ch[:result] ||= String.new
             ch[:result] << data
@@ -425,7 +473,11 @@ module Net
 
           status ||= {}
           channel = exec(command, status: status, &block_or_concat)
-          channel.wait
+          if channel == nil
+            raise "aaaaaaaaaaaaaaa"
+          else
+            channel.wait # here sa mere
+          end
 
           channel[:result] ||= String.new unless block
           channel[:result] &&= channel[:result].force_encoding("UTF-8") unless block
@@ -441,6 +493,7 @@ module Net
         #
         #  ssh.send_message(Buffer.from(:byte, REQUEST_SUCCESS).to_s)
         def send_message(message)
+          puts "Sending message"
           transport.enqueue_message(message)
         end
 

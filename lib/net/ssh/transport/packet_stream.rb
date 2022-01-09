@@ -116,6 +116,7 @@ module Net
         # Enqueues a packet to be sent, and blocks until the entire packet is
         # sent.
         def send_packet(payload)
+          debug {"Send packets !!" }
           enqueue_packet(payload)
           wait_for_pending_sends
         end
@@ -124,16 +125,24 @@ module Net
         # The given payload is pre-processed according to the algorithms specified
         # in the client state (compression, cipher, and hmac).
         def enqueue_packet(payload)
+          debug { "=> 1: Payload size: #{payload.length}" }
+          # puts "Enqueue the packet"
           # try to compress the packet
           payload = client.compress(payload)
 
+          debug { "=> 2: Payload size: #{payload.length}" }
+          # puts "=> 1"
+
           # the length of the packet, minus the padding
           actual_length = (client.hmac.etm ? 0 : 4) + payload.bytesize + 1
+
+          # puts "=> 2"
 
           # compute the padding length
           padding_length = client.block_size - (actual_length % client.block_size)
           padding_length += client.block_size if padding_length < 4
 
+          # puts "=> 3"
           # compute the packet length (sans the length field itself)
           packet_length = payload.bytesize + padding_length + 1
 
@@ -171,12 +180,27 @@ module Net
             message = encrypted_data + mac
           end
 
+          debug { "=> last: Message size: #{payload.length}" }
           debug { "queueing packet nr #{client.sequence_number} type #{payload.getbyte(0)} len #{packet_length}" }
-          enqueue(message)
+          if packet_length < 262144
+            enqueue(message)
 
-          client.increment(packet_length)
+            client.increment(packet_length)
+            debug { "the packet is ok"}
 
+          else
+            fatal { "packet too big (max: 262144)"}
+            # raise "packet too big"
+            # send_pending()
+            # enqueue("nil")
+            # enqueue([])
+          #  client.increment(packet_length)
+
+            # cleanup()
+            return nil
+          end
           self
+
         end
 
         # Performs any pending cleanup necessary on the IO and its associated
